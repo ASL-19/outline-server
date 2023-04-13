@@ -2,8 +2,16 @@
 /build/
 node_modules/
 /src/server_manager/install_scripts/do_install_script.ts
+<<<<<<< HEAD
+yarn-error.log
+*.bz2
+
+kubernetes/cert/
+kubernetes/.generated/
+=======
 /src/server_manager/install_scripts/gcp_install_script.ts
 .vscode/
 .idea/
 third_party/shellcheck/download/
 macos-signing-certificate.p12
+>>>>>>> 8dd19cf7912360a3708b4992b6237237bc2a5066

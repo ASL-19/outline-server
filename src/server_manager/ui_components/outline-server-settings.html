@@ -1,0 +1,212 @@
+<!--
+  Copyright 2018 The Outline Authors
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+<link rel='import' href='../bower_components/polymer/polymer.html'>
+<link rel='import' href='../bower_components/paper-button/paper-button.html'>
+<link rel='import' href='../bower_components/paper-input/paper-input.html'>
+<link rel='import' href='../bower_components/paper-toggle-button/paper-toggle-button.html'>
+
+<link rel='import' href='./cloud-install-styles.html'>
+<link rel='import' href='./outline-iconset.html'>
+
+<dom-module id='outline-server-settings'>
+  <template>
+    <style include='cloud-install-styles'></style>
+    <style>
+      .content {
+        flex-grow: 1;
+      }
+      .setting {
+        padding: 24px;
+        align-items: flex-start;
+      }
+      .setting:not(:first-child) {
+        margin-top: 8px;
+      }
+      .setting-icon, img.setting-icon {
+        margin-right: 24px;
+        color: #fff;
+        opacity: 0.87;
+      }
+      .setting > div {
+        width: 100%;
+      }
+      .setting h3 {
+        margin: 0 0 16px 0;
+        padding: 0;
+        color: #fff;
+        font-size: 16px;
+      }
+      .setting p {
+        margin-bottom: 12px;
+        width: 60%;
+        color: var(--medium-gray);
+      }
+      #metricsHeader {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+      }
+      .detail {
+        margin-top: 0px;
+        font-size: 12px;
+      }
+      .clickable {
+        cursor: pointer;
+      }
+      paper-toggle-button {
+        --paper-toggle-button-checked-bar-color: var(--primary-green);
+        --paper-toggle-button-checked-button-color: var(--primary-green);
+        --paper-toggle-button-checked-ink-color: var(--primary-green);
+        --paper-toggle-button-unchecked-bar-color: var(--dark-gray);
+      }
+      paper-input {
+        /* Removes extra padding added by children of paper-input */
+        margin-top: -8px;
+        --paper-input-container-label-focus: {
+          color: var(--primary-green);
+        };
+        --paper-input-container-underline-focus: {
+          border-color: var(--primary-green);
+        };
+        --paper-input-container-label: {
+          font-size: 14px;
+          line-height: 22px;
+        };
+        --paper-input-container-color: var(--medium-gray);
+        --paper-input-container-input: {
+          color: #fff;
+        }
+
+      }
+      paper-input[readonly] {
+        --paper-input-container-underline: {
+          display: none;
+        };
+        --paper-input-container-underline-focus: {
+          display: none;
+        };
+        --paper-input-container-underline-disabled: {
+          display: none;
+        };
+        --paper-input-container-disabled: {
+          opacity: 1;
+        }
+      }
+      .link {
+        text-decoration: underline;
+        color: var(--medium-gray);
+      }
+      paper-input:not([readonly]) {
+        width: 60%;
+      }
+    </style>
+    <div class="container">
+      <div class="content">
+        <!-- DO information -->
+        <div class="setting card-section" hidden$="[[!isServerManaged]]">
+          <img class="setting-icon digital-ocean-icon" src="images/do_white_logo.svg"/>
+          <div>
+            <h3>Digital Ocean</h3>
+            <paper-input readonly value="[[serverLocation]]" label="Server location" hidden$="[[!serverLocation]]" always-float-label maxlength="100"></paper-input>
+            <paper-input readonly value="[[serverMonthlyCost]] USD/month" label="Montly cost" hidden$="[[!serverMonthlyCost]]" always-float-label maxlength="100"></paper-input>
+            <paper-input readonly value="[[serverMonthlyTransferLimit]]" label="Transfer limit" hidden$="[[!serverMonthlyTransferLimit]]" always-float-label maxlength="100"></paper-input>
+          </div>
+        </div>
+        <div class="setting card-section">
+          <iron-icon class="setting-icon" icon="outline-iconset:outline"></iron-icon>
+          <div>
+            <h3>Server Information</h3>
+            <paper-input id="serverNameInput" class="server-name" value="{{name}}" label="Name" always-float-label maxlength="100" on-keydown="_handleNameInputKeyDown" on-blur="_handleNameInputBlur"></paper-input>
+            <p class="detail">Set a new name for your server. Note that this will not be reflected on the devices of the users that you invited to connect to it.</p>
+            <paper-input readonly value="[[serverPortForNewAccessKeys]]" label="Port for new access keys" hidden$="[[!serverPortForNewAccessKeys]]" always-float-label maxlength="100"></paper-input>
+            <paper-input readonly value="[[serverHostname]]" label="Hostname" hidden$="[[!serverHostname]]" always-float-label maxlength="100"></paper-input>
+            <paper-input readonly value="[[serverManagementApiUrl]]" label="Management API URL" hidden$="[[!serverManagementApiUrl]]" always-float-label maxlength="100"></paper-input>
+            <paper-input readonly value="[[serverCreationDate]]" label="Created" hidden$="[[!serverCreationDate]]" always-float-label maxlength="100"></paper-input>
+            <paper-input readonly value="[[serverId]]" label="Server ID" hidden$="[[!serverId]]" always-float-label maxlength="100"></paper-input>
+          </div>
+        </div>
+        <!-- Metrics controls -->
+        <div class="setting card-section">
+          <iron-icon class="setting-icon" icon="editor:insert-chart"></iron-icon>
+          <div>
+            <div id="metricsHeader">
+              <h3>Share anonymous metrics</h3>
+              <paper-toggle-button id="metricsToggle" checked="{{metricsEnabled}}"></paper-toggle-button>
+            </div>
+            <p>Share anonymized metrics to help improve the reliability and performance of Outline, for you and for those you share your server with. <a class="link" href="https://s3.amazonaws.com/outline-vpn/index.html#/en/support/dataCollection">Learn more</a>.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </template>
+  <script>
+    Polymer({
+      is: 'outline-server-settings',
+      properties: {
+        isServerManaged: Boolean,
+        name: String,
+        metricsEnabled: { type: Boolean, observer: '_metricsEnabledChanged' },
+        // Initialize to null so we can use the hidden attribute, which does not work well with undefined values.
+        serverId: {type: String, value: null},
+        serverHostname: {type: String, value: null},
+        serverManagementApiUrl: {type: String, value: null},
+        serverPortForNewAccessKeys: {type: Number, value: null},
+        serverCreationDate: {type: String, value: null},
+        serverLocation: {type: String, value: null},
+        serverMonthlyCost: {type: String, value: null},
+        serverMonthlyTransferLimit: {type: String, value: null},
+      },
+      update: function(name, metricsEnabled) {
+        this.initialName = name;
+        this.name = name;
+        this.initialMetricsEnabled = metricsEnabled;
+        this.metricsEnabled = metricsEnabled;
+      },
+      _handleNameInputKeyDown: function(event) {
+        if (event.key === 'Escape') {
+          this.name = this.initialName;
+          this.$.serverNameInput.blur();
+        } else if (event.key === 'Enter') {
+          this.$.serverNameInput.blur();
+        }
+      },
+      _handleNameInputBlur: function(event) {
+        const newName = this.name;
+        if (!newName) {
+          this.name = this.initialName;
+          return;
+        }
+        // Fire signal if name has changed.
+        if (newName !== this.initialName) {
+          this.initialName = newName
+          this.fire('ServerRenameRequested', {newName});
+        }
+      },
+      _metricsEnabledChanged: function() {
+        if (this.metricsEnabled === undefined || this.initialMetricsEnabled === undefined) {
+          return;
+        }
+        // Fire signal if metrics changed.
+        if (this.metricsEnabled !== this.initialMetricsEnabled) {
+          const metricsSignal = this.metricsEnabled ?
+              'EnableMetricsRequested' : 'DisableMetricsRequested';
+          this.initialMetricsEnabled = this.metricsEnabled;
+          this.fire(metricsSignal);
+        }
+      },
+    });
+  </script>
+</dom-module>

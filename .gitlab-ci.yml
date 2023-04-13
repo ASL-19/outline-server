@@ -1,0 +1,147 @@
+image: docker:stable
+
+variables:
+  REGISTRY: registry.notofilter.com
+  CI_REGISTRY_IMAGE: registry.notofilter.com/$CI_PROJECT_PATH
+  SB_IMAGE: outline/shadowbox
+  DOCKER_HOST: tcp://docker:2375
+
+cache:
+  key: "Shadowbox"
+  paths:
+  - node_modules/
+
+# ------------
+# --- Rules --
+# ------------
+
+.if-feature-branch:
+    rules:
+        - if: $CI_COMMIT_BRANCH != "develop" && $CI_COMMIT_BRANCH != "master" && $CI_COMMIT_TAG !~ /^(release\/)?\d+\.\d+\.\d+.*/
+
+.if-develop-branch:
+    rules:
+        - if: $CI_COMMIT_BRANCH == "develop"
+
+.if-master-branch-manual:
+    rules:
+        - if: $CI_COMMIT_BRANCH == "master"
+          when: manual
+
+.if-master-branch:
+    rules:
+        - if: $CI_COMMIT_BRANCH == "master"
+
+.if-cicd-branch:
+    rules:
+        - if: $CI_COMMIT_BRANCH == "fix-cicd"
+
+.if-version-tag:
+    rules:
+        - if: $CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+.*/
+
+.if-version-tag-manual:
+    rules:
+        - if: $CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+.*/
+          when: manual
+
+.if-not-release-tag:
+    rules:
+        - if: $CI_COMMIT_TAG !~ /^release\/\d+\.\d+\.\d+.*/
+
+# ------------
+# --- Type ---
+# ------------
+
+.variables-dev:
+    variables:
+        VERSION: $CI_COMMIT_SHORT_SHA-dev
+
+.variables-prod:
+    variables:
+        VERSION: $CI_COMMIT_TAG
+
+before_script:
+  - apk update && apk add git bash rsync curl
+
+stages:
+  - release
+  - deploy
+  - analyze
+
+docker-image-dev:
+  stage: release
+  extends:
+      - .if-develop-branch
+      - .variables-dev
+  services:
+    - docker:20-dind
+  script:
+    - bash ./scripts/run_action.sh "shadowbox/docker/build"
+    - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN $REGISTRY
+    - docker tag $SB_IMAGE $CI_REGISTRY_IMAGE:$VERSION
+    - docker tag $SB_IMAGE $CI_REGISTRY_IMAGE:dev
+    - docker push $CI_REGISTRY_IMAGE:$VERSION
+    - docker push $CI_REGISTRY_IMAGE:dev
+
+docker-image-prod:
+  stage: release
+  extends:
+      - .if-version-tag
+      - .variables-prod
+  services:
+    - docker:20-dind
+  script:
+    - bash ./scripts/run_action.sh "shadowbox/docker/build"
+    - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN $REGISTRY
+    - docker tag $SB_IMAGE $CI_REGISTRY_IMAGE:$VERSION
+    - docker tag $SB_IMAGE $CI_REGISTRY_IMAGE:stable
+    - docker push $CI_REGISTRY_IMAGE:$VERSION 
+    - docker push $CI_REGISTRY_IMAGE:stable
+
+# deploy-staging:
+#   stage: deploy
+#   image: devth/helm
+#   environment:
+#     name: staging
+#   dependencies:
+#     - docker-image
+#   only:
+#     - tags
+#   except:
+#     - branches
+#   script:
+#     - kubectl config current-context
+#     - echo Connected to K8S cluster
+#     - kubectl create namespace ${NAMESPACE} --dry-run -o yaml | kubectl apply -f -
+#     - kubectl create secret docker-registry ${IMAGE_PULL_SECRET} -n ${NAMESPACE} --docker-server=${CI_REGISTRY}  --docker-username=${DOCKER_USER} --docker-password=${DOCKER_PASSWORD} --dry-run -o yaml | kubectl apply -f -
+
+#     - if [ "$(kubectl get deploy ${MYSQL_DEPLOY} -n ${NAMESPACE} --ignore-not-found)" = "" ] ; then
+#         echo Creating mysql deployment...;
+#         helm init;
+#         helm install --name ${MYSQL_DEPLOY} --namespace ${NAMESPACE} --set mysqlUser=${RM_DB_USER},mysqlPassword=${RM_DB_PASSWORD},mysqlDatabase=${RM_DB_NAME},persistence.size=${MYSQL_PVC_STORAGE} stable/mysql;
+#       fi
+
+#     - if [ "$(kubectl get nodes -l ${LABEL_KEY}=${LABEL_VALUE}  --ignore-not-found)" = "" ] ; then
+#         echo Labeling K8S cluster node...;
+#         export NODE=$(kubectl get nodes -o jsonpath='{.items[-1:].metadata.name}');
+#         kubectl label nodes $NODE ${LABEL_KEY}=${LABEL_VALUE};
+#       fi
+
+#     # Substituting environment variables with their value (only if the variables exist)
+#     # Using `cut` to extract variable names and `sed` to append a leading `$`
+#     - cd deployment/k8s && mkdir .generated
+#     - for f in *.yaml; do
+#         envsubst "$(env | cut -d= -f1 | sed -e 's/^/$/')" < $f > ".generated/$(basename $f)"; done
+
+#     - kubectl create secret docker-registry ${IMAGE_PULL_SECRET} -n ${NAMESPACE} --docker-server=${CI_REGISTRY}  --docker-username=${DOCKER_USER} --docker-password=${DOCKER_PASSWORD} --dry-run -o yaml | kubectl apply -f -
+#     - kubectl get secret ${S3_CREDS_SEC} --namespace=default --export -o yaml | kubectl apply --namespace=${NAMESPACE} -f -
+#     - kubectl create secret generic ${MYSQL_DEPLOY} --namespace=${NAMESPACE} --from-literal=mysql-password=${RM_DB_PASSWORD} --dry-run -o yaml | kubectl apply -f -
+#     - kubectl apply -f .generated/backup-job.yaml
+#     - kubectl apply -f .generated/pvc.yaml
+#     - kubectl get secret ${CERT_AND_SECRET} --namespace=default --export -o yaml | kubectl apply --namespace=${NAMESPACE} -f -
+#     - kubectl apply -f .generated/conf.yaml
+#     - kubectl delete deploy ${WORDPRESS_APP} -n ${NAMESPACE} --ignore-not-found
+#     - kubectl apply -f .generated/wordpress-deploy.yaml
+#     - kubectl apply -f .generated/service.yaml
+#     - kubectl apply -f .generated/ingress.yaml

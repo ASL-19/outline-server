@@ -16,17 +16,19 @@ import * as crypto from 'crypto';
 import * as ipRegex from 'ip-regex';
 import * as restify from 'restify';
 import * as restifyErrors from 'restify-errors';
+import * as json_config from '../infrastructure/json_config';
 import {makeConfig, SIP002_URI} from 'outline-shadowsocksconfig';
 
-import {JsonConfig} from '../infrastructure/json_config';
 import * as logging from '../infrastructure/logging';
 import {AccessKey, AccessKeyRepository, DataLimit} from '../model/access_key';
 import * as errors from '../model/errors';
 import {version} from '../package.json';
+import {AccessKeyConfigJson, ServerAccessKeyRepository} from './server_access_key';
 
 import {ManagerMetrics} from './manager_metrics';
 import {ServerConfigJson} from './server_config';
 import {SharedMetricsPublisher} from './shared_metrics';
+import {configJsonLocation} from './main';
 
 // Creates a AccessKey response.
 function accessKeyToApiJson(accessKey: AccessKey) {
@@ -131,7 +133,6 @@ export function bindService(
   apiServer.post(`${apiPrefix}/access-keys`, service.createNewAccessKey.bind(service));
   apiServer.get(`${apiPrefix}/access-keys`, service.listAccessKeys.bind(service));
 
-  apiServer.get(`${apiPrefix}/access-keys/:id`, service.getAccessKey.bind(service));
   apiServer.del(`${apiPrefix}/access-keys/:id`, service.removeAccessKey.bind(service));
   apiServer.put(`${apiPrefix}/access-keys/:id/name`, service.renameAccessKey.bind(service));
   apiServer.put(
@@ -142,6 +143,7 @@ export function bindService(
     `${apiPrefix}/access-keys/:id/data-limit`,
     service.removeAccessKeyDataLimit.bind(service)
   );
+  apiServer.get(`${apiPrefix}/reload-access-keys`, service.reloadAccessKeys.bind(service));
 
   apiServer.get(`${apiPrefix}/metrics/transfer`, service.getDataUsage.bind(service));
   apiServer.get(`${apiPrefix}/metrics/enabled`, service.getShareMetrics.bind(service));
@@ -198,7 +200,7 @@ function validateDataLimit(limit: unknown): DataLimit {
 export class ShadowsocksManagerService {
   constructor(
     private defaultServerName: string,
-    private serverConfig: JsonConfig<ServerConfigJson>,
+    private serverConfig: json_config.JsonConfig<ServerConfigJson>,
     private accessKeys: AccessKeyRepository,
     private managerMetrics: ManagerMetrics,
     private metricsPublisher: SharedMetricsPublisher
@@ -278,26 +280,6 @@ export class ShadowsocksManagerService {
     next();
   }
 
-  // Get a access key
-  public getAccessKey(req: RequestType, res: ResponseType, next: restify.Next): void {
-    try {
-      logging.debug(`getAccessKey request ${JSON.stringify(req.params)}`);
-      const accessKeyId = validateAccessKeyId(req.params.id);
-      const accessKey = this.accessKeys.getAccessKey(accessKeyId);
-      const accessKeyJson = accessKeyToApiJson(accessKey);
-
-      logging.debug(`getAccessKey response ${JSON.stringify(accessKeyJson)}`);
-      res.send(HttpSuccess.OK, accessKeyJson);
-      return next();
-    } catch (error) {
-      logging.error(error);
-      if (error instanceof errors.AccessKeyNotFound) {
-        return next(new restifyErrors.NotFoundError(error.message));
-      }
-      return next(error);
-    }
-  }
-
   // Lists all access keys
   public listAccessKeys(req: RequestType, res: ResponseType, next: restify.Next): void {
     logging.debug(`listAccessKeys request ${JSON.stringify(req.params)}`);
@@ -308,6 +290,30 @@ export class ShadowsocksManagerService {
     logging.debug(`listAccessKeys response ${JSON.stringify(response)}`);
     res.send(HttpSuccess.OK, response);
     return next();
+  }
+
+  public async reloadAccessKeys(req: RequestType, res: ResponseType, next: restify.Next): Promise<void> {
+    logging.debug(`reloadAccessKeys request ${JSON.stringify(req.params)}`);
+    let accessKeyConfig = null;
+
+    if (configJsonLocation.location == 'File') {
+      logging.debug('Reading access key config from file');
+      accessKeyConfig = json_config.loadFileConfig<AccessKeyConfigJson>(configJsonLocation.file.filename)
+    
+    } else if (configJsonLocation.location == 'Redis') {
+      
+      logging.warn('Reading access key config from Redis');
+      accessKeyConfig = await json_config.loadRedisConfig<AccessKeyConfigJson>(
+        configJsonLocation.redis.url,
+        configJsonLocation.redis.label);    
+    
+    } else {
+      logging.warn('Config File Location is unknown');
+    }
+
+    this.accessKeys.reloadAccessKeys(accessKeyConfig);
+    res.send(HttpSuccess.OK);
+    return;
   }
 
   // Creates a new access key

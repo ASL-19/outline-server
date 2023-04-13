@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import {JsonConfig } from "../infrastructure/json_config";
+import {AccessKeyConfigJson} from '../server/server_access_key';
+
 export type AccessKeyId = string;
 export type AccessKeyMetricsId = string;
 
@@ -53,10 +56,10 @@ export interface AccessKeyRepository {
   createNewAccessKey(encryptionMethod?: string): Promise<AccessKey>;
   // Removes the access key given its id. Throws on failure.
   removeAccessKey(id: AccessKeyId);
-  // Returns the access key with the given id. Throws on failure.
-  getAccessKey(id: AccessKeyId): AccessKey;
   // Lists all existing access keys
   listAccessKeys(): AccessKey[];
+  // reloads all existing access keys
+  reloadAccessKeys(access_keys: JsonConfig<AccessKeyConfigJson>): void;
   // Changes the port for new access keys.
   setPortForNewAccessKeys(port: number): Promise<void>;
   // Changes the hostname for access keys.

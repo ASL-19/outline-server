@@ -45,6 +45,8 @@ declare -ar docker_bindings=(
   -e "SB_CERTIFICATE_FILE=${SB_CERTIFICATE_FILE}"
   -e "SB_PRIVATE_KEY_FILE=${SB_PRIVATE_KEY_FILE}"
   -e "SB_METRICS_URL=${SB_METRICS_URL:-https://dev.metrics.getoutline.org}"
+  -e "SB_REDIS_URL=${SB_REDIS_URL:-redis://127.0.0.1:6379}"
+  -e "SB_SERVERS_LABEL=${SB_SERVERS_LABEL:-}"
 )
 
 readonly IMAGE="${SB_IMAGE:-outline/shadowbox}"
@@ -57,4 +59,4 @@ if [[ "$(uname)" == "Darwin" ]]; then
   NET_BINDINGS=(-p "${SB_API_PORT}:${SB_API_PORT}" -p "${ACCESS_KEY_PORT}:${ACCESS_KEY_PORT}" -p "${ACCESS_KEY_PORT}:${ACCESS_KEY_PORT}/udp")
 fi;
 
-docker run --rm -it "${NET_BINDINGS[@]}" --name shadowbox "${docker_bindings[@]}" "${IMAGE}"
+docker run --rm -it "${NET_BINDINGS[@]}" --name shadowbox --network host "${docker_bindings[@]}" "${IMAGE}"

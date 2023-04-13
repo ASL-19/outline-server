@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import { createClient, RedisClientType } from 'redis';
 import * as file from './file';
 import * as logging from './logging';
 
@@ -45,6 +46,52 @@ export class FileConfig<T> implements JsonConfig<T> {
     } catch (error) {
       // TODO: Stop swallowing the exception and handle it in the callers.
       logging.error(`Error writing config ${this.filename} ${error}`);
+    }
+  }
+}
+
+export async function loadRedisConfig<T>(url: string, serverId: string): Promise<JsonConfig<T>> {
+
+  const client = createClient({url: url});
+  logging.debug(`Redis URL ${url} and ${serverId}`);
+  client.on('error', (error) => logging.error(`Redis Client Error ${error}`));
+  await client.connect();
+  logging.debug(`Redis Connected`);
+  let text = await client.get(serverId);
+  logging.debug(`Redis text: ${text}`);
+  await client.disconnect()
+  logging.debug(`Redis disconnected`);
+  let dataJson = {} as T;
+  if (text) {
+    dataJson = JSON.parse(text) as T;
+  }
+  return new RedisConfig<T>(url, serverId, dataJson);
+}
+
+// RedisConfig is a JsonConfig backed by a Redis Database
+export class RedisConfig<T> implements JsonConfig<T> {
+  private client;
+
+  constructor(private url: string, private serverId: string, private dataJson: T) {}
+
+  data(): T {
+    return this.dataJson;
+  }
+
+  async write() {
+    try {
+      let client = createClient({url: this.url})
+      client.on('error', (error) => logging.error(`Redis Client Error ${error}`));
+      logging.debug(`WRITE Redis URL ${this.url} and ${this.serverId}`);
+      await client.connect();
+      logging.debug(`WRITE Redis Connected`);
+      await client.set(this.serverId, JSON.stringify(this.dataJson));
+      logging.debug(`WRITE Redis text: ${this.serverId}: ${JSON.stringify(this.dataJson)}`);
+      await client.disconnect();
+      logging.debug(`WRITE Redis disconnected`);
+    } catch (error) {
+      // TODO: Stop swallowing the exception and handle it in the callers.
+      logging.error(`Error writing config ${this.serverId} ${error}`);
     }
   }
 }

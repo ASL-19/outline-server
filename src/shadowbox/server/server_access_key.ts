@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import { mainModule } from 'process';
 import * as randomstring from 'randomstring';
 import * as uuidv4 from 'uuid/v4';
+import { JsonConfig} from '../infrastructure/json_config';
 
 import {Clock} from '../infrastructure/clock';
 import {isPortUsed} from '../infrastructure/get_port';
-import {JsonConfig} from '../infrastructure/json_config';
+
 import * as logging from '../infrastructure/logging';
 import {PrometheusClient} from '../infrastructure/prometheus_scraper';
 import {
@@ -31,6 +33,8 @@ import {
 import * as errors from '../model/errors';
 import {ShadowsocksServer} from '../model/shadowsocks_server';
 import {PrometheusManagerMetrics} from './manager_metrics';
+import { throws } from 'assert';
+import { runInThisContext } from 'vm';
 
 // The format as json of access keys in the config file.
 interface AccessKeyStorageJson {
@@ -202,17 +206,16 @@ export class ServerAccessKeyRepository implements AccessKeyRepository {
     throw new errors.AccessKeyNotFound(id);
   }
 
-  getAccessKey(id: AccessKeyId): ServerAccessKey {
-    for (const accessKey of this.accessKeys) {
-      if (accessKey.id === id) {
-        return accessKey;
-      }
-    }
-    throw new errors.AccessKeyNotFound(id);
-  }
-
   listAccessKeys(): AccessKey[] {
     return [...this.accessKeys]; // Return a copy of the access key array.
+  }
+
+  reloadAccessKeys(access_keys: JsonConfig<AccessKeyConfigJson>): void {
+    this.keyConfig = access_keys;
+    this.keyConfig.write();
+    this.accessKeys = this.loadAccessKeys();
+    this.updateServer();
+    return;
   }
 
   renameAccessKey(id: AccessKeyId, name: string) {
@@ -285,6 +288,7 @@ export class ServerAccessKeyRepository implements AccessKeyRepository {
           secret: key.proxyParams.password,
         };
       });
+    logging.debug('Updating ' + serverAccessKeys);
     return this.shadowsocksServer.update(serverAccessKeys);
   }
 
@@ -295,5 +299,15 @@ export class ServerAccessKeyRepository implements AccessKeyRepository {
   private saveAccessKeys() {
     this.keyConfig.data().accessKeys = this.accessKeys.map((key) => accessKeyToStorageJson(key));
     this.keyConfig.write();
+  }
+
+  // Returns a reference to the access key with `id`, or throws if the key is not found.
+  private getAccessKey(id: AccessKeyId): ServerAccessKey {
+    for (const accessKey of this.accessKeys) {
+      if (accessKey.id === id) {
+        return accessKey;
+      }
+    }
+    throw new errors.AccessKeyNotFound(id);
   }
 }

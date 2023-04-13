@@ -39,11 +39,22 @@ import {
   PrometheusUsageMetrics,
   RestMetricsCollectorClient,
   SharedMetricsPublisher,
-} from './shared_metrics';
+} from './shared_metrics'
 
 const APP_BASE_DIR = path.join(__dirname, '..');
 const DEFAULT_STATE_DIR = '/root/shadowbox/persisted-state';
 const MMDB_LOCATION = '/var/lib/libmaxminddb/ip-country.mmdb';
+export let configJsonLocation = {
+  location: 'File',
+  file: {
+    filename: null
+  },
+  redis: {
+    label: null,
+    url: null
+  }
+
+}
 
 async function exportPrometheusMetrics(registry: prometheus.Registry, port): Promise<http.Server> {
   return new Promise<http.Server>((resolve, _) => {
@@ -84,10 +95,40 @@ async function main() {
   logging.info('======== Outline Server main() ========');
   logging.info(`Version is ${version}`);
 
-  const portProvider = new PortProvider();
-  const accessKeyConfig = json_config.loadFileConfig<AccessKeyConfigJson>(
-    getPersistentFilename('shadowbox_config.json')
+  const serverConfig = server_config.readServerConfig(
+    getPersistentFilename('shadowbox_server_config.json')
   );
+
+  const proxyHostname = serverConfig.data().hostname;
+  if (!proxyHostname) {
+    logging.error('Need to specify hostname in shadowbox_server_config.json');
+    process.exit(1);
+  }
+  logging.info(`Hostname: ${proxyHostname}`);
+
+  const portProvider = new PortProvider();
+
+  let accessKeyConfigTemp = null;
+  if (!process.env.SB_REDIS_URL) {
+    logging.debug('Reading access key config from file');
+    configJsonLocation.file.filename = getPersistentFilename('shadowbox_config.json');
+    accessKeyConfigTemp = json_config.loadFileConfig<AccessKeyConfigJson>(
+      configJsonLocation.file.filename)
+  } else {
+    logging.debug('Reading access key config from Redis');
+    let label = serverConfig.data().hostname;
+    if (process.env.SB_SERVERS_LABEL) {
+      label = process.env.SB_SERVERS_LABEL;
+    }
+    const url = process.env.SB_REDIS_URL;
+    accessKeyConfigTemp = await json_config.loadRedisConfig<AccessKeyConfigJson>(
+      url, label);
+    configJsonLocation.location = 'Redis';
+    configJsonLocation.redis.label = label;
+    configJsonLocation.redis.url = url;
+  }
+  const accessKeyConfig = accessKeyConfigTemp;
+
   reserveExistingAccessKeyPorts(accessKeyConfig, portProvider);
 
   prometheus.collectDefaultMetrics({register: prometheus.register});
@@ -107,17 +148,6 @@ async function main() {
   }
   portProvider.addReservedPort(apiPortNumber);
 
-  const serverConfig = server_config.readServerConfig(
-    getPersistentFilename('shadowbox_server_config.json')
-  );
-
-  const proxyHostname = serverConfig.data().hostname;
-  if (!proxyHostname) {
-    logging.error('Need to specify hostname in shadowbox_server_config.json');
-    process.exit(1);
-  }
-
-  logging.info(`Hostname: ${proxyHostname}`);
   logging.info(`SB_METRICS_URL: ${metricsCollectorUrl}`);
 
   const prometheusPort = await portProvider.reserveFirstFreePort(9090);
@@ -138,8 +168,6 @@ async function main() {
       scrape_interval: '1m',
     },
     scrape_configs: [
-      {job_name: 'prometheus', static_configs: [{targets: [prometheusLocation]}]},
-      {job_name: 'outline-server-main', static_configs: [{targets: [nodeMetricsLocation]}]},
     ],
   };
 
